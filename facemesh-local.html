@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>FaceMesh — Local Minimal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0f1720;color:#e6eef6;font-family:system-ui}
+    .box{position:relative;width:640px;height:480px;background:#000;border-radius:10px;overflow:hidden}
+    video,canvas{position:absolute;inset:0;width:100%;height:100%}
+    video{object-fit:cover;transform:scaleX(-1)}
+    .ui{position:fixed;right:16px;top:16px;max-width:40ch}
+    button{padding:8px 12px;margin-bottom:8px}
+    .err{color:#fda4af;white-space:pre-wrap}
+  </style>
+</head>
+<body>
+  <div class="box">
+    <video id="video" playsinline muted></video>
+    <canvas id="overlay" width="640" height="480"></canvas>
+  </div>
+  <div class="ui">
+    <button id="start">Start Camera + FaceMesh</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <script>
+  const startBtn = document.getElementById('start');
+  const errBox   = document.getElementById('err');
+  const video    = document.getElementById('video');
+  const canvas   = document.getElementById('overlay');
+  const ctx      = canvas.getContext('2d');
+
+  let faceMesh = null, running = false;
+
+  // 动态加载本地脚本
+  function loadFaceMesh(cb){
+    const s = document.createElement('script');
+    s.src = './lib/mediapipe/face_mesh.js';
+    s.onload = cb;
+    s.onerror = () => {
+      errBox.textContent = '无法加载 ./lib/mediapipe/face_mesh.js（检查路径和文件名，确保用 http(s) 访问，并放好了 wasm/data 资产）。';
+    };
+    document.head.appendChild(s);
+  }
+
+  startBtn.onclick = () => {
+    errBox.textContent = '';
+    loadFaceMesh(async () => {
+      try {
+        // 1) 打开摄像头
+        const stream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+        video.srcObject = stream;
+        await video.play();
+
+        // 2) 检查 FaceMesh 是否存在
+        if(!(window.FaceMesh && window.FaceMesh.FaceMesh)){
+          throw new Error('face_mesh.js 已加载，但未导出 FaceMesh.FaceMesh。请确认文件内容与版本。');
+        }
+
+        // 3) 初始化 FaceMesh（指向本地目录以加载 wasm/data）
+        faceMesh = new FaceMesh.FaceMesh({
+          locateFile: (f) => `./lib/mediapipe/${f}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence: 0.5
+        });
+        faceMesh.onResults(onResults);
+
+        // 4) 渲染循环
+        running = true;
+        requestAnimationFrame(loop);
+
+        startBtn.disabled = true;
+        startBtn.textContent = 'Running';
+      } catch(e){
+        console.error(e);
+        errBox.textContent = e.message || String(e);
+      }
+    });
+  };
+
+  async function loop(){
+    if(!running) return;
+    try{ await faceMesh.send({ image: video }); }catch(e){ console.error(e); }
+    requestAnimationFrame(loop);
+  }
+
+  function onResults(res){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    if(res.image) ctx.drawImage(res.image,0,0,canvas.width,canvas.height);
+    const faces = res.multiFaceLandmarks;
+    if(!faces || !faces.length) return;
+    const lm = faces[0];
+
+    // 标记几个关键点
+    ctx.fillStyle = '#7dd3fc';
+    [33,263,1,61,291].forEach(i=>{
+      const p=lm[i]; const x=canvas.width - p.x*canvas.width; const y=p.y*canvas.height;
+      ctx.beginPath(); ctx.arc(x,y,3,0,Math.PI*2); ctx.fill();
+    });
+
+    // 画辅助线
+    ctx.strokeStyle = '#fda4af'; ctx.lineWidth = 1;
+    [[33,263],[61,291]].forEach(([a,b])=>{
+      const A=lm[a], B=lm[b];
+      const ax=canvas.width-A.x*canvas.width, ay=A.y*canvas.height;
+      const bx=canvas.width-B.x*canvas.width, by=B.y*canvas.height;
+      ctx.beginPath(); ctx.moveTo(ax,ay); ctx.lineTo(bx,by); ctx.stroke();
+    });
+  }
+  </script>
+</body>
+</html>

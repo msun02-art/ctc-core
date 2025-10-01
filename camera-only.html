@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Camera Only</title>
+  <style>body{margin:0;display:grid;place-items:center;height:100vh;background:#101522;color:#e6eef6;font-family:system-ui}video{width:80vw;max-width:720px;aspect-ratio:4/3;background:#000}button{margin-top:12px;padding:8px 12px}</style>
+</head>
+<body>
+  <div>
+    <video id="v" playsinline autoplay muted></video>
+    <div style="text-align:center"><button id="btn">Start Camera</button></div>
+    <pre id="err" style="color:#fda4af;white-space:pre-wrap"></pre>
+  </div>
+  <script>
+  const v=document.getElementById('v'), btn=document.getElementById('btn'), err=document.getElementById('err');
+  btn.onclick=async ()=>{
+    err.textContent='';
+    try{
+      const stream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+      v.srcObject = stream;
+      btn.disabled = true; btn.textContent = 'Camera started';
+    }catch(e){ err.textContent = 'getUserMedia error: ' + (e.message||e); }
+  };
+  </script>
+</body>
+</html>
